@@ -11,46 +11,58 @@ window.dash_clientside.clientside.findSphereNeighbors = function(fig, clicks, a,
             .then(tree_structure => {
                 const tree = new KDTree(tree_structure);
                 let [results, found, coordinates, inorderNeighbors] = tree.findSphereNeighbors(a,b,c,r);
-                fig.frames = createTraversalAnimation(fig, coordinates, inorderNeighbors);
 
-                // Start by removing all the Barriers
-                fig.data.forEach(trace =>{
-                    if (trace.type === 'surface'){
-                        trace.visible = false;
+                // Create a deep copy of the figure to avoid direct mutation
+                let updatedFig = JSON.parse(JSON.stringify(fig));
+
+                // Remove all surface traces
+                updatedFig.data = updatedFig.data.map(trace => {
+                    if (trace.type === 'surface') {
+                        return {...trace, visible: false};
                     }
+                    return trace;
                 });
+
                 // Create the Sphere and add it to the figure
                 const sphere = createSphere(a, b, c, r);
-                fig.data.push(sphere);
+                updatedFig.data.push(sphere);
                 
-                fig.layout.scene = {
-                    xaxis: { showspikes: false },
-                    yaxis: { showspikes: false },
-                    zaxis: { showspikes: false }
+                // Update layout with animation and spike settings
+                updatedFig.layout = {
+                    ...updatedFig.layout,
+                    scene: {
+                        ...(updatedFig.layout.scene || {}),
+                        xaxis: { showspikes: false },
+                        yaxis: { showspikes: false },
+                        zaxis: { showspikes: false }
+                    },
+                    updatemenus: [{
+                        buttons: [
+                            {
+                                args: [null, { frame: { duration: 1250, redraw: true }, fromcurrent: true }],
+                                label: "Traverse Tree",
+                                method: "animate"
+                            },
+                            {
+                                args: [[null], { frame: { duration: 0, redraw: true }, mode: "immediate", transition: { duration: 0 } }],
+                                label: "Pause Traversal",
+                                method: "animate"
+                            }
+                        ],
+                        direction: "left",
+                        pad: { r: 10, t: 20 },
+                        showactive: false,
+                        type: "buttons",
+                        x: 0.1,
+                        xanchor: "right",
+                        y: 0,
+                        yanchor: "top"
+                    }]
                 };
+
+                // Regenerate frames for tree traversal
+                updatedFig.frames = createTraversalAnimation(updatedFig, coordinates, inorderNeighbors);
                 
-                fig.layout.updatemenus = [{
-                    buttons: [
-                        {
-                            args: [null, { frame: { duration: 1250, redraw: true }, fromcurrent: true }],
-                            label: "Traverse Tree",
-                            method: "animate"
-                        },
-                        {
-                            args: [[null], { frame: { duration: 0, redraw: true }, mode: "immediate", transition: { duration: 0 } }],
-                            label: "Pause Traversal",
-                            method: "animate"
-                        }
-                    ],
-                    direction: "left",
-                    pad: { r: 10, t: 20 },
-                    showactive: false,
-                    type: "buttons",
-                    x: 0.1,
-                    xanchor: "right",
-                    y: 0,
-                    yanchor: "top"
-                }];
                 // Make the Text Pretty
                 const neighbs = results.map(subArray => `(${subArray.join(',')})`).join(', ');
                 const foundStatus = found ? "in the tree" : "not in the tree";
@@ -61,10 +73,12 @@ window.dash_clientside.clientside.findSphereNeighbors = function(fig, clicks, a,
                 } else {
                     ret = "Please enter all coordinates and the radius...";
                 }
-                figure = fig
-                console.log([ret,figure])
-                return [ret, figure];
+                return [ret, updatedFig];
             })
+            .catch(error => {
+                console.error('Error in findSphereNeighbors:', error);
+                return [null, fig];
+            });
     }
     
     // Return default values if conditions are not met
