@@ -4,7 +4,6 @@ window.dash_clientside.clientside = window.dash_clientside.clientside || {};
 
 window.dash_clientside.clientside.findSphereNeighbors = function(fig, clicks, a, b, c, r) {
     // Check if the user has put values and clicked the button
-    console.log("Accessed findSphereNeighbors")
     if (clicks > 0 && a && b && c && r){
         // Start by getting the tree
         return fetch('/assets/tree_data.json')
@@ -17,7 +16,7 @@ window.dash_clientside.clientside.findSphereNeighbors = function(fig, clicks, a,
                 let updatedFig = JSON.parse(JSON.stringify(fig));
 
                 // Regenerate frames for tree traversal
-                updatedFig.frames = createTraversalAnimation(updatedFig, coordinates, inorderNeighbors);
+                updatedFig.frames = createTraversalAnimation(fig, coordinates, inorderNeighbors);
 
                 // Remove all surface traces
                 updatedFig.data = updatedFig.data.map(trace => {
@@ -67,14 +66,21 @@ window.dash_clientside.clientside.findSphereNeighbors = function(fig, clicks, a,
                 // Make the Text Pretty
                 const neighbs = results.map(subArray => `(${subArray.join(',')})`).join(', ');
                 const foundStatus = found ? "in the tree" : "not in the tree";
+                let alert;
                 let ret;
                 
                 if (results.length !== 0) {
                     ret = `The coordinate (${a},${b},${c}) is ${foundStatus} and its neighbors' coordinates are: ${neighbs}`;
+                    alert = createAlert(ret, "success");
+                } else if (a && b && c && r){
+                    ret = "There are no neighbors in this sphere!";
+                    alert = createAlert(ret, "info")
                 } else {
                     ret = "Please enter all coordinates and the radius...";
+                    alert = createAlert(ret, "warning")
                 }
-                console.log('Return values is', ret)
+                console.log('Return values is', alert)
+
                 return [ret, updatedFig];
             })
             .catch(error => {
@@ -86,6 +92,193 @@ window.dash_clientside.clientside.findSphereNeighbors = function(fig, clicks, a,
     // Return default values if conditions are not met
     return [null, fig];
 };
+
+function createSphere(a, b, c, r) {
+    // Points in the Meshgrid
+    const n = 50;
+
+    // Using the spherical coordinate system approach similar to NumPy
+    const theta = Array.from({length: n}, (_, i) => i * Math.PI / (n - 1));
+    const phi = Array.from({length: n}, (_, i) => i * 2 * Math.PI / (n - 1));
+
+    // Create meshgrid-like arrays
+    const x = theta.map(t => 
+        phi.map(p => r * Math.sin(t) * Math.cos(p) + a)
+    );
+    
+    const y = theta.map(t => 
+        phi.map(p => r * Math.sin(t) * Math.sin(p) + b)
+    );
+    
+    const z = theta.map(t => 
+        phi.map(() => r * Math.cos(t) + c)
+    );
+
+    // Put the arrays into a surface to display it in plotly
+    const sphere = {
+        type: 'surface',
+        x: x,
+        y: y,
+        z: z,
+        name: "sphere",
+        opacity: 0.5,
+        showscale: false,
+        contours: {
+            x: {highlight: false},
+            y: {highlight: false},
+            z: {highlight: false}
+        }
+    };
+
+    return sphere;
+}
+
+function createTraversalAnimation(fig, coors, neighbs) {
+    // Deep copy of input data
+    const updatedFig = JSON.parse(JSON.stringify(fig));
+    
+    // Separate scatter and surface traces
+    const scatterList = updatedFig.data
+        .filter(trace => trace.type === 'scatter')
+        .map(trace => ({...trace}));
+    
+    const surfaceList = updatedFig.data
+        .filter(trace => trace.type === 'surface')
+        .map(trace => ({...trace}));
+
+    const checkingNodeColor = 'orange';
+    const neighboringNodeColor = 'green';
+    const strangerNodeColor = 'red';
+
+    // Create frames for animation
+    const frames = [];
+    var neighborNodes = new Set();
+    var checkedNodes = new Set();
+
+    // Create trace dictionary for coordinate mapping
+    const traceDict = {};
+    scatterList.forEach(trace => {
+        if (trace.hoverinfo === 'text') {
+            const coordinate = [trace.x[0], trace.y[0]];
+            traceDict[coordinate] = {...trace, marker: {color: "black", size: 15}};
+        }
+    });
+
+
+    // Include 3D points
+    const pointsList = fig.data.filter(trace => trace.type === 'scatter3d');
+    scatterList.push(...pointsList);
+    
+    for (let i = 0; i < coors.length; i++) {
+        var updatedData = JSON.parse(JSON.stringify(scatterList));
+        
+        // Position calculation for annotation arrow
+        let ax, ay;
+        if (i === 0) {
+            [ax, ay] = [0, 75];  // Root
+        } else if (i % 2 === 0) {
+            [ax, ay] = [-50, -40];  // Left
+        } else {
+            [ax, ay] = [50, -40];  // Right
+        }
+        
+        const treeCoor = coors[i][0];
+        const graphCoor = coors[i][1];
+
+        // Update surface plane
+        let plane = null;
+        surfaceList.forEach(surface => {
+            const formattedGraphCoor = `(${graphCoor.join(', ')})`;
+            if (surface.name === formattedGraphCoor) {
+                surface.colorscale = "gray";
+                surface.opacity = 1;
+                plane = surface;
+            }
+        });
+
+        if (plane) updatedData.push(plane);
+
+        updatedData = updatedData.map(trace => {
+            // Only modify scatter traces
+            if (trace.type === 'scatter') {
+              const coordinate = trace.x.length === 1 ? [trace.x[0], trace.y[0]] : [trace.x[0], trace.y[0]];
+              const coordinateKey = coordinate.join(',');
+              
+              // Check if this trace represents a tree node
+              const isTreeNode = coordinate.length === 2 && trace.hoverinfo === 'text';
+              
+              if (isTreeNode) {
+                const strangerNodes = new Set([...checkedNodes].filter(element => !neighborNodes.has(element)));
+                console.log(strangerNodes, neighborNodes);
+                
+                // Prioritize coloring logic
+                if (coordinateKey === treeCoor.join(',')) {
+                    checkedNodes.add(coordinateKey);
+                } else if (neighborNodes.has(coordinateKey)) {
+                  trace.marker = { ...trace.marker, color: neighboringNodeColor };
+                } else if (neighbs[i] && coordinateKey === neighbs[i].join(',')) {
+                  trace.marker = { ...trace.marker, color: neighboringNodeColor };
+                  neighborNodes.add(coordinateKey);
+                } else if (strangerNodes.has(coordinateKey)) {
+                  trace.marker = { ...trace.marker, color: strangerNodeColor };
+                }
+              }
+            }
+            return trace;
+          });
+
+        // Create frame with updated data and annotation
+        const frame = {
+            data: updatedData,
+            layout: {
+                annotations: [{
+                    x: treeCoor[0],
+                    y: treeCoor[1],
+                    ax: ax,
+                    ay: ay,
+                    xref: "x",
+                    yref: "y",
+                    text: "Current Node",
+                    showarrow: true,
+                    font: {size: 16, color: "#ff0000"},
+                    arrowhead: 2,
+                    arrowsize: 1,
+                    arrowwidth: 3,
+                    arrowcolor: "#ff0000",
+                    opacity: 0.8
+                }]
+            },
+            name: `frame${i}`
+        };
+        
+        frames.push(frame);
+    }
+
+    // Final frame processing
+    const lastTreeCoor = coors[coors.length - 1][0];
+    const lastNeighbor = neighbs[neighbs.length - 1];
+    
+    if (lastTreeCoor === lastNeighbor) {
+        traceDict[lastTreeCoor].marker.color = neighboringNodeColor;
+    } else {
+        traceDict[lastTreeCoor].marker.color = strangerNodeColor;
+        frames.push({
+            data: updatedData, 
+            layout: {annotations: []}, 
+            name: 'final'
+        });
+    }
+    return frames;
+}
+
+function createAlert(message, type) {
+    // Create the alert div
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type}`;
+    alertDiv.role = 'alert';
+    alertDiv.innerText = message;
+    return alertDiv;
+}
 
 const LEVEL_DICT = {
     "X": 0,
@@ -109,6 +302,8 @@ class KDTree {
         let isCenterFound = this.find(a,b,c)
         if (this.root){
             this.root.findSphereNeighbors(a,b,c,r,neighbors,traversalCoordinates,inorderNeighbors)
+        // Remove the Center since its a neighbor of itself
+            neighbors = neighbors.filter(subArray => !(subArray[0] === a && subArray[1] === b && subArray[2] === c));
             neighbors.sort()
         }
         return [neighbors, isCenterFound, traversalCoordinates, inorderNeighbors]
@@ -194,156 +389,4 @@ class KDNode {
         }
 
     }
-};
-// TODO: Please fix this by making sure all the data is being properly updated
-function createTraversalAnimation(fig, coors, neighbs) {
-    const scatterList = fig.data.filter(trace => trace.type === 'scatter').map(trace => ({...trace}));
-    const surfaceList = fig.data.filter(trace => trace.type === 'surface').map(trace => ({...trace}));
-    const checkingNodeColor = 'orange';
-    const neighboringNodeColor = 'green';
-    const strangerNodeColor = 'red';
-
-    // Create a list of frames for the animation
-    const frames = [];
-
-    // Create a dictionary to map the coordinates with the traces
-    const traceDict = {};
-    scatterList.forEach(trace => {
-        if (trace.hoverinfo === 'text') {
-            const coordinate = [trace.x[0], trace.y[0]];
-            traceDict[coordinate] = trace;
-        }
-    });
-
-    const seenNeighbors = new Set();
-
-    const pointsList = fig.data.filter(trace => trace.type === 'scatter3d').map(trace => ({...trace}));
-    scatterList.push(...pointsList);
-    
-    for (let i = 0; i < coors.length; i++) {
-        updatedData = JSON.parse(JSON.stringify(scatterList));
-        // Calculate ax based on the position in the tree
-        let ax, ay;
-        if (i === 0) {
-            [ax, ay] = [0, 75];  // Root
-        } else if (i % 2 === 0) {
-            [ax, ay] = [-50, -40];  // Left
-        } else {
-            [ax, ay] = [50, -40];  // Right
-        }
-        
-        treeCoor = coors[i][0];
-        const graphCoor = coors[i][1];
-
-        let plane = null;
-        for (const surface of surfaceList) {
-            if (surface.name === graphCoor.toString()) {
-                surface.colorscale = "gray";
-                surface.opacity = 1;
-                plane = surface;
-                break;
-            }
-        }
-
-        updatedData.push(plane);
-
-        // Update the color of the corresponding trace
-        if (treeCoor in traceDict) {
-            traceDict[treeCoor].marker.color = checkingNodeColor;
-        }
-
-        if (neighbs[i]) {
-            const coord = neighbs[i];
-            if (coord in traceDict) {
-                traceDict[coord].marker.color = neighboringNodeColor;
-                seenNeighbors.add(coord);
-            }
-        }
-
-        for (const [coord, trace] of Object.entries(traceDict)) {
-            if (coord !== treeCoor && trace.marker.color === checkingNodeColor) {
-                traceDict[coord].marker.color = strangerNodeColor;
-            }
-        }
-        // Create a frame with the updated trace and the arrow annotation
-        frame = {
-            data: updatedData,
-            layout: {
-                annotations: [
-                    {
-                        x: treeCoor[0],
-                        y: treeCoor[1],
-                        ax: ax,
-                        ay: ay,
-                        xref: "x",
-                        yref: "y",
-                        text: "Current Node",
-                        showarrow: true,
-                        font: {size: 16, color: "#ff0000"},
-                        arrowhead: 2,
-                        arrowsize: 1,
-                        arrowwidth: 3,
-                        arrowcolor: "#ff0000",
-                        opacity: 0.8
-                    }
-                ]
-            },
-            name: `frame${i}`
-        };
-        frames.push(frame);
-    }
-
-    // Check Final Value:
-    if (treeCoor === neighbs[neighbs.length - 1]) {
-        traceDict[treeCoor].marker.color = neighboringNodeColor;
-    } else {
-        traceDict[treeCoor].marker.color = strangerNodeColor;
-        frames.push({data: updatedData, layout: {annotations: []}, name: 'final'});
-    }
-    console.log(frames)
-    return frames;
-};
-
-function createSphere(a, b, c, r) {
-    // Points in the Meshgrid
-    const n = 50;
-
-    // Using the Formula of a sphere below:
-    const theta = Array.from({length: n}, (_, i) => i * Math.PI / (n - 1));
-    const phi = Array.from({length: n}, (_, i) => i * 2 * Math.PI / (n - 1));
-
-    const x = new Array(n).fill().map(() => new Array(n));
-    const y = new Array(n).fill().map(() => new Array(n));
-    const z = new Array(n).fill().map(() => new Array(n));
-
-    for (let i = 0; i < n; i++) {
-        for (let j = 0; j < n; j++) {
-            x[i][j] = r * Math.sin(theta[i]) * Math.cos(phi[j]) + a;
-            y[i][j] = r * Math.sin(theta[i]) * Math.sin(phi[j]) + b;
-            z[i][j] = r * Math.cos(theta[i]) + c;
-        }
-    }
-
-    // Put the arrays into a surface to display it in plotly :)
-    const sphere = {
-        type: 'surface',
-        x: x,
-        y: y,
-        z: z,
-        name: "sphere",
-        colorscale: "Peach",
-        opacity: 0.5,
-        showscale: false,
-
-        // PLEASE DO NOT TURN THIS TO TRUE D:
-        // Turning off contours is good for your sanity... (it removes lines that contour around the sphere,
-        // If you keep dragging the sphere around with these turned on, it gives you tons of lines around the sphere
-        contours: {
-            x: {highlight: false},
-            y: {highlight: false},
-            z: {highlight: false}
-        }
-    };
-
-    return sphere;
 };
