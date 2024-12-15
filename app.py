@@ -559,5 +559,5 @@ if __name__ == "__main__":
     #         'inorder_neighbors': inorder_neighbors
     #     })
 # Run the app :D
-    app.run_server(debug = True)
+    app.run_server(debug = False)
 
