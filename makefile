@@ -4,6 +4,8 @@ run_app:
 	wget -r http://127.0.0.1:8050/
 	wget -r http://127.0.0.1:8050/_dash-layout 
 	wget -r http://127.0.0.1:8050/_dash-dependencies
+	wget -r http://127.0.0.1:8050/assets/clientside.js
+	wget -r http://127.0.0.1:8050/assets/tree_data.json
 
 	wget -r http://127.0.0.1:8050/_dash-component-suites/dash/dcc/async-graph.js
 	wget -r http://127.0.0.1:8050/_dash-component-suites/dash/dcc/async-highlight.js
