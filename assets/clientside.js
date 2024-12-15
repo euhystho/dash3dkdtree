@@ -61,7 +61,9 @@ window.dash_clientside.clientside.findSphereNeighbors = function(fig, clicks, a,
                 } else {
                     ret = "Please enter all coordinates and the radius...";
                 }
-                return [ret, fig];
+                figure = fig
+                console.log([ret,figure])
+                return [ret, figure];
             })
     }
     
