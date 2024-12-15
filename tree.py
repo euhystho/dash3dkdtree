@@ -473,32 +473,3 @@ class KDNode:
         for barrier in barriers:
             fig.add_trace(barrier)
         return barriers, fig
-# Create the KDTree
-tree = KDTree()
-points = [
-    [50, 50, 50],
-    [25, 25, 25],
-    [25, 50, 20],
-    [25, 10, 10],
-    [25, 10, 5],
-    [25, 10, 20],
-    [75, 75, 75],
-    [75, 10, 5],
-    [75, 100, 30],
-    [75, 10, 20],
-    [75, 10, 50],
-    [75, 100, 70],
-    [75, 100, 90]
-]
-
-for point in points:
-    tree.add(point[0], point[1], point[2])
-
-# Serialize the data
-tree_data = {
-    "tree_structure": tree.to_dict()  # Serialize the tree structure
-}
-
-# Save the serialized data to a JSON file
-with open('assets/tree_data.json', 'w') as f:
-    json.dump(tree_data, f)

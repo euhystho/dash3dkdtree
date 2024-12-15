@@ -4,6 +4,7 @@ window.dash_clientside.clientside = window.dash_clientside.clientside || {};
 
 window.dash_clientside.clientside.findSphereNeighbors = function(fig, clicks, a, b, c, r) {
     // Check if the user has put values and clicked the button
+    console.log("Accessed findSphereNeighbors")
     if (clicks > 0 && a && b && c && r){
         // Start by getting the tree
         return fetch('/assets/tree_data.json')
@@ -12,8 +13,11 @@ window.dash_clientside.clientside.findSphereNeighbors = function(fig, clicks, a,
                 const tree = new KDTree(tree_structure);
                 let [results, found, coordinates, inorderNeighbors] = tree.findSphereNeighbors(a,b,c,r);
 
-                // Create a deep copy of the figure to avoid direct mutation
+                // Create a deep copy of the figure 
                 let updatedFig = JSON.parse(JSON.stringify(fig));
+
+                // Regenerate frames for tree traversal
+                updatedFig.frames = createTraversalAnimation(updatedFig, coordinates, inorderNeighbors);
 
                 // Remove all surface traces
                 updatedFig.data = updatedFig.data.map(trace => {
@@ -26,7 +30,7 @@ window.dash_clientside.clientside.findSphereNeighbors = function(fig, clicks, a,
                 // Create the Sphere and add it to the figure
                 const sphere = createSphere(a, b, c, r);
                 updatedFig.data.push(sphere);
-                
+
                 // Update layout with animation and spike settings
                 updatedFig.layout = {
                     ...updatedFig.layout,
@@ -60,9 +64,6 @@ window.dash_clientside.clientside.findSphereNeighbors = function(fig, clicks, a,
                     }]
                 };
 
-                // Regenerate frames for tree traversal
-                updatedFig.frames = createTraversalAnimation(updatedFig, coordinates, inorderNeighbors);
-                
                 // Make the Text Pretty
                 const neighbs = results.map(subArray => `(${subArray.join(',')})`).join(', ');
                 const foundStatus = found ? "in the tree" : "not in the tree";
@@ -73,6 +74,7 @@ window.dash_clientside.clientside.findSphereNeighbors = function(fig, clicks, a,
                 } else {
                     ret = "Please enter all coordinates and the radius...";
                 }
+                console.log('Return values is', ret)
                 return [ret, updatedFig];
             })
             .catch(error => {
@@ -193,7 +195,7 @@ class KDNode {
 
     }
 };
-
+// TODO: Please fix this by making sure all the data is being properly updated
 function createTraversalAnimation(fig, coors, neighbs) {
     const scatterList = fig.data.filter(trace => trace.type === 'scatter').map(trace => ({...trace}));
     const surfaceList = fig.data.filter(trace => trace.type === 'surface').map(trace => ({...trace}));
@@ -219,7 +221,7 @@ function createTraversalAnimation(fig, coors, neighbs) {
     scatterList.push(...pointsList);
     
     for (let i = 0; i < coors.length; i++) {
-        updatedData = [...scatterList];
+        updatedData = JSON.parse(JSON.stringify(scatterList));
         // Calculate ax based on the position in the tree
         let ax, ay;
         if (i === 0) {
@@ -263,9 +265,8 @@ function createTraversalAnimation(fig, coors, neighbs) {
                 traceDict[coord].marker.color = strangerNodeColor;
             }
         }
-
         // Create a frame with the updated trace and the arrow annotation
-        const frame = {
+        frame = {
             data: updatedData,
             layout: {
                 annotations: [
@@ -299,7 +300,7 @@ function createTraversalAnimation(fig, coors, neighbs) {
         traceDict[treeCoor].marker.color = strangerNodeColor;
         frames.push({data: updatedData, layout: {annotations: []}, name: 'final'});
     }
-
+    console.log(frames)
     return frames;
 };
 
@@ -330,7 +331,7 @@ function createSphere(a, b, c, r) {
         y: y,
         z: z,
         name: "sphere",
-        colorscale: 'Peach',
+        colorscale: "Peach",
         opacity: 0.5,
         showscale: false,
 
