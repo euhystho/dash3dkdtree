@@ -1,5 +1,5 @@
 import math
-import heapq
+import json
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
@@ -122,7 +122,16 @@ class KDTree:
             self.barriers, fig = self.root.plot(list, fig)
         self.list = list
         return fig
+
+# This method's main job is to export a json file of the tree for use on clientside callback:
+    def to_dict(self):
+        ret = None
+        if self.root:
+            self.inorder()
+            self.root.find_depths(0)
+            ret = self.root.to_dict()
         
+        return ret
 class KDNode:
     def __init__(self, x, y, z, level, parent = None):
         self.x = x
@@ -135,6 +144,18 @@ class KDNode:
         self.left = None
         self.right = None
 
+    def to_dict(self):
+        ret = {
+            "x": self.x,
+            "y": self.y,
+            "z": self.z,
+            "inorder_pos": self.inorder_pos,
+            "depth": self.depth,
+            "level": self.level,
+            "left": self.left.to_dict() if self.left else None,
+            "right": self.right.to_dict() if self.right else None
+        }
+        return ret
     def add(self, x, y, z):
         """
         Recursively traverses through KDNodes, until there's a spot to add the node
@@ -251,7 +272,7 @@ class KDNode:
         if distance <= r:
             inorder_neighbors.append(current_point_2D_val)
             if not isCenter:
-                heapq.heappush(neighbors, current_point)
+                neighbors.append(current_point)
         else:
             inorder_neighbors.append(None)
 
@@ -452,3 +473,32 @@ class KDNode:
         for barrier in barriers:
             fig.add_trace(barrier)
         return barriers, fig
+# Create the KDTree
+tree = KDTree()
+points = [
+    [50, 50, 50],
+    [25, 25, 25],
+    [25, 50, 20],
+    [25, 10, 10],
+    [25, 10, 5],
+    [25, 10, 20],
+    [75, 75, 75],
+    [75, 10, 5],
+    [75, 100, 30],
+    [75, 10, 20],
+    [75, 10, 50],
+    [75, 100, 70],
+    [75, 100, 90]
+]
+
+for point in points:
+    tree.add(point[0], point[1], point[2])
+
+# Serialize the data
+tree_data = {
+    "tree_structure": tree.to_dict()  # Serialize the tree structure
+}
+
+# Save the serialized data to a JSON file
+with open('assets/tree_data.json', 'w') as f:
+    json.dump(tree_data, f)
