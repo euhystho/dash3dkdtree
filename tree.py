@@ -77,7 +77,7 @@ class KDTree:
     
     def find_sphere_neighbors(self, a, b, c, r):
         """
-        Finds the Sphere's neighbors that are within the sphere by checking each pole and the north, south, east, west of the equator
+        Finds the Sphere's neighbors that are within the sphere by checking if its inside the sphere
 
         Args:
             a (float): x-coordinate of the center of the sphere
@@ -88,17 +88,18 @@ class KDTree:
         Returns:
             neighbors (list): all the neighbors in the sphere
             isCenterFound (bool): True if the center of the sphere is in the tree, False otherwise
+            traversal_coordinates (list): contains a sublist of the 2D Coordinate and 3D Coordinates of traversed neighbors
+            inorder_neighbors (list): if there are no neighbors in the current traversal, it will be None, 
+            otherwise it has the 2D coordinate
         """
-    #Checks if the center of the sphere is in the tree
-        isCenterFound, path = self.find(a,b,c)
         neighbors = []
         traversal_coordinates = []
     # We assume at the first part we do not know if it is in the neighbors yet so we start the first value as None
         inorder_neighbors = [None]
     # In Order and find_depths are simply there for Traversing the Tree :)
         if self.root:
-            self.inorder()
-            self.root.find_depths(0)
+        #Checks if the center of the sphere is in the tree
+            isCenterFound, path = self.find(a,b,c)
             self.root.find_sphere_neighbors(a,b,c,r, neighbors, traversal_coordinates, inorder_neighbors)
             neighbors.sort()
         return neighbors, isCenterFound, traversal_coordinates, inorder_neighbors
@@ -156,6 +157,7 @@ class KDNode:
             "right": self.right.to_dict() if self.right else None
         }
         return ret
+    
     def add(self, x, y, z):
         """
         Recursively traverses through KDNodes, until there's a spot to add the node
@@ -248,7 +250,7 @@ class KDNode:
 
     def find_sphere_neighbors(self, a,b,c,r, neighbors, traversal_coordinates, inorder_neighbors):
         """
-        Finds the Sphere's neighbors that are within the sphere by checking each pole and the north, south, east, west of the equator
+        Finds the Sphere's neighbors that are within the sphere by checking if its inside the sphere
 
         Args:
             a (float): x-coordinate of the center of the sphere
@@ -256,7 +258,9 @@ class KDNode:
             c (float): z-coordinate of the center of the sphere
             r (float): radius of the sphere
             neighbors (list):  all the neighbors in the sphere
-
+            traversal_coordinates (list): contains a sublist of the 2D Coordinate and 3D Coordinates of traversed neighbors
+            inorder_neighbors (list): if there are no neighbors in the current traversal, it will be None, 
+            otherwise it has the 2D coordinate
         """
     # Calculates the distance of the current node with the center of the sphere
         distance = math.sqrt((self.x - a)**2 + (self.y - b)**2 + (self.z - c)**2)

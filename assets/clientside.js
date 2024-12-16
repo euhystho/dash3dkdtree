@@ -3,22 +3,23 @@ window.dash_clientside = window.dash_clientside || {};
 window.dash_clientside.clientside = window.dash_clientside.clientside || {};
 
 window.dash_clientside.clientside.findSphereNeighbors = function(fig, clicks, a, b, c, r) {
-    // Check if the user has put values and clicked the button
+// Check if the user has put values and clicked the button
     if (clicks > 0 && a && b && c && r){
-        // Start by getting the tree
+    // Start by getting the tree json
         return fetch('/assets/tree_data.json')
             .then(response => response.json())
+        //Extract the tree_structure to make it work with the javascript version of the python script
             .then(tree_structure => {
                 const tree = new KDTree(tree_structure);
                 let [results, found, coordinates, inorderNeighbors] = tree.findSphereNeighbors(a,b,c,r);
 
-                // Create a deep copy of the figure 
+            // Create a deep copy of the plotly figure 
                 let updatedFig = JSON.parse(JSON.stringify(fig));
 
-                // Regenerate frames for tree traversal
+            // Generates frames for the tree traversal
                 updatedFig.frames = createTraversalAnimation(fig, coordinates, inorderNeighbors);
 
-                // Remove all surface traces
+            // Remove all existing surface traces
                 updatedFig.data = updatedFig.data.map(trace => {
                     if (trace.type === 'surface') {
                         return {...trace, visible: false};
@@ -26,19 +27,21 @@ window.dash_clientside.clientside.findSphereNeighbors = function(fig, clicks, a,
                     return trace;
                 });
 
-                // Create the Sphere and add it to the figure
+            // Create the Sphere and add it to the figure data
                 const sphere = createSphere(a, b, c, r);
                 updatedFig.data.push(sphere);
 
-                // Update layout with animation and spike settings
+            // Update layout with animation and spike settings
                 updatedFig.layout = {
                     ...updatedFig.layout,
+                // Spikes are intentionally turned off to minimized uncanny valley PLEASE DO NOT SWITCH TO TRUE ;-;
                     scene: {
                         ...(updatedFig.layout.scene || {}),
                         xaxis: { showspikes: false },
                         yaxis: { showspikes: false },
                         zaxis: { showspikes: false }
                     },
+                // This stuff just creates the animation through plotly...
                     updatemenus: [{
                         buttons: [
                             {
@@ -63,70 +66,70 @@ window.dash_clientside.clientside.findSphereNeighbors = function(fig, clicks, a,
                     }]
                 };
 
-                // Make the Text Pretty
-                const neighbs = results.map(subArray => `(${subArray.join(',')})`).join(', ');
+            // Make the Text Pretty
+                const neighbs = results.map(subArray => `(${subArray.join(', ')})`).join(', ');
+            // If the center of the sphere is found we print out the corresponding text:
                 const foundStatus = found ? "in the tree" : "not in the tree";
-                let alert;
                 let ret;
                 
+            //If we have results then we return that with a success Alert bootstrap class 
                 if (results.length !== 0) {
-                    ret = `The coordinate (${a},${b},${c}) is ${foundStatus} and its neighbors' coordinates are: ${neighbs}`;
-                    alert = createAlert(ret, "success");
+                    ret = `The coordinate (${a}, ${b}, ${c}) is ${foundStatus} and its neighbors' coordinates are: ${neighbs}`;
+                    createAlert(ret, "success");
+
+            // Otherwise if the user has clearly inputted values but there are no results then there are no neighbors in the sphere
                 } else if (a && b && c && r){
                     ret = "There are no neighbors in this sphere!";
-                    alert = createAlert(ret, "info")
-                } else {
-                    ret = "Please enter all coordinates and the radius...";
-                    alert = createAlert(ret, "warning")
-                }
-                console.log('Return values is', alert)
-
-                return [ret, updatedFig];
+                    createAlert(ret, "info")
+                } 
+                return updatedFig;
             })
+        //Catching errors here :)
             .catch(error => {
                 console.error('Error in findSphereNeighbors:', error);
-                return [null, fig];
+                return fig;
             });
     }
+// Returns Please Enter values...
+    ret = "Please enter all coordinates and the radius...";
+    alert = createAlert(ret, "warning")
     
-    // Return default values if conditions are not met
-    return [null, fig];
+
+    return fig;
 };
 
 function createSphere(a, b, c, r) {
-    // Points in the Meshgrid
+// Not much to look here, same stuff as the python implementation
     const n = 50;
+    const theta = Array.from({ length: n }, (_, i) => i * Math.PI / (n - 1));
+    const phi = Array.from({ length: n }, (_, i) => i * 2 * Math.PI / (n - 1));
 
-    // Using the spherical coordinate system approach similar to NumPy
-    const theta = Array.from({length: n}, (_, i) => i * Math.PI / (n - 1));
-    const phi = Array.from({length: n}, (_, i) => i * 2 * Math.PI / (n - 1));
-
-    // Create meshgrid-like arrays
-    const x = theta.map(t => 
+    const x = theta.map(t =>
         phi.map(p => r * Math.sin(t) * Math.cos(p) + a)
     );
-    
-    const y = theta.map(t => 
+
+    const y = theta.map(t =>
         phi.map(p => r * Math.sin(t) * Math.sin(p) + b)
     );
-    
-    const z = theta.map(t => 
+
+    const z = theta.map(t =>
         phi.map(() => r * Math.cos(t) + c)
     );
 
-    // Put the arrays into a surface to display it in plotly
     const sphere = {
         type: 'surface',
         x: x,
         y: y,
         z: z,
         name: "sphere",
-        opacity: 0.5,
+    //Cannot use Peach on Javascript ;-;
+        colorscale: 'Cividis', 
         showscale: false,
+        opacity: 0.5,
         contours: {
-            x: {highlight: false},
-            y: {highlight: false},
-            z: {highlight: false}
+            x: { highlight: false },
+            y: { highlight: false },
+            z: { highlight: false }
         }
     };
 
@@ -134,10 +137,21 @@ function createSphere(a, b, c, r) {
 }
 
 function createTraversalAnimation(fig, coors, neighbs) {
-    // Deep copy of input data
+// Deep copy of input data
     const updatedFig = JSON.parse(JSON.stringify(fig));
+
+// Ensure all scatter trace markers to black if the figure was used before :)
+    updatedFig.data.forEach(trace => {
+        if (trace.type === 'scatter' && trace.hoverinfo === 'text') {
+            trace.marker = { 
+                ...trace.marker, 
+                color: 'black', 
+                size: 15 
+            };
+        }
+    });
     
-    // Separate scatter and surface traces
+// Separate scatter and surface traces
     const scatterList = updatedFig.data
         .filter(trace => trace.type === 'scatter')
         .map(trace => ({...trace}));
@@ -150,12 +164,14 @@ function createTraversalAnimation(fig, coors, neighbs) {
     const neighboringNodeColor = 'green';
     const strangerNodeColor = 'red';
 
-    // Create frames for animation
+// Create frames for animation
     const frames = [];
+
+//Create sets to keep track of the neighbors in the sphere and what nodes we already traversed
     var neighborNodes = new Set();
     var checkedNodes = new Set();
 
-    // Create trace dictionary for coordinate mapping
+// Create trace dictionary for coordinate mapping for quick access (again like the python implementation)
     const traceDict = {};
     scatterList.forEach(trace => {
         if (trace.hoverinfo === 'text') {
@@ -165,61 +181,85 @@ function createTraversalAnimation(fig, coors, neighbs) {
     });
 
 
-    // Include 3D points
+// Include 3D scatter plot points
     const pointsList = fig.data.filter(trace => trace.type === 'scatter3d');
     scatterList.push(...pointsList);
     
-    for (let i = 0; i < coors.length; i++) {
+// Iterate through all the neighbors
+    for (let i = 0; i < neighbs.length; i++) {
+    // Create a deep copy of the 2D scatters that we are modifying
         var updatedData = JSON.parse(JSON.stringify(scatterList));
-        
-        // Position calculation for annotation arrow
+
+    // This value simply keeps the coordinate values according to if its in range of the coors array
+        var coorsIterationValue;
+    // treeCoor refers to the 2D Representation, graphCoor refers to the 3D Representation
+        var treeCoor;
+        var graphCoor;
+
+    // Since the last frame is the last element of the neighbors, then we just check if the current value is the last frame
+        var isLastFrame = i === neighbs.length - 1
+
+    //Keep the coordinates in bounds if its the last frame
+        if (isLastFrame){
+            coorsIterationValue = coors.length - 1
+            treeCoor = coors[coorsIterationValue][0];
+            graphCoor = coors[coorsIterationValue][1];
+        } else {
+            coorsIterationValue = i
+            treeCoor = coors[i][0];
+            graphCoor = coors[i][1];
+        }
+
+
+    // Position calculations for arrow showing what's the current node
         let ax, ay;
-        if (i === 0) {
+        if (coorsIterationValue === 0) {
             [ax, ay] = [0, 75];  // Root
-        } else if (i % 2 === 0) {
+        } else if (coorsIterationValue % 2 === 0) {
             [ax, ay] = [-50, -40];  // Left
         } else {
             [ax, ay] = [50, -40];  // Right
         }
-        
-        const treeCoor = coors[i][0];
-        const graphCoor = coors[i][1];
 
-        // Update surface plane
+    // Get the plane with the corresponding node that is in the plane for the given coordinate
         let plane = null;
         surfaceList.forEach(surface => {
             const formattedGraphCoor = `(${graphCoor.join(', ')})`;
             if (surface.name === formattedGraphCoor) {
-                surface.colorscale = "gray";
+                surface.colorscale = 'Greys';
                 surface.opacity = 1;
                 plane = surface;
             }
         });
-
+    // If we have successfully found the plane with right coordinate add it to the updatdData for the frame
         if (plane) updatedData.push(plane);
 
+    //We go through all the traces of the updateData
         updatedData = updatedData.map(trace => {
-            // Only modify scatter traces
+        // Only modify scatter traces in 2D
             if (trace.type === 'scatter') {
-              const coordinate = trace.x.length === 1 ? [trace.x[0], trace.y[0]] : [trace.x[0], trace.y[0]];
+              const coordinate = [trace.x[0], trace.y[0]];
               const coordinateKey = coordinate.join(',');
               
-              // Check if this trace represents a tree node
+            // Check if this trace represents a node and not an edge
               const isTreeNode = coordinate.length === 2 && trace.hoverinfo === 'text';
               
               if (isTreeNode) {
-                const strangerNodes = new Set([...checkedNodes].filter(element => !neighborNodes.has(element)));
-                console.log(strangerNodes, neighborNodes);
-                
-                // Prioritize coloring logic
-                if (coordinateKey === treeCoor.join(',')) {
+            //Coloring Logic below YAY
+                const isNodeBeingVisited = coordinateKey === treeCoor.join(',') && !isLastFrame
+                const isNodeAlreadyNeighbor = neighborNodes.has(coordinateKey)
+                const isNodeNeighbor = neighbs[i] && coordinateKey === neighbs[i].join(',')
+                const isNodeStranger = checkedNodes.has(coordinateKey) && !neighborNodes.has(coordinateKey)
+
+                if (isNodeBeingVisited) {
+                    trace.marker = { ...trace.marker, color: checkingNodeColor };
                     checkedNodes.add(coordinateKey);
-                } else if (neighborNodes.has(coordinateKey)) {
+                } else if (isNodeAlreadyNeighbor) {
                   trace.marker = { ...trace.marker, color: neighboringNodeColor };
-                } else if (neighbs[i] && coordinateKey === neighbs[i].join(',')) {
+                } else if (isNodeNeighbor) {
                   trace.marker = { ...trace.marker, color: neighboringNodeColor };
                   neighborNodes.add(coordinateKey);
-                } else if (strangerNodes.has(coordinateKey)) {
+                } else if (isNodeStranger) {
                   trace.marker = { ...trace.marker, color: strangerNodeColor };
                 }
               }
@@ -227,7 +267,7 @@ function createTraversalAnimation(fig, coors, neighbs) {
             return trace;
           });
 
-        // Create frame with updated data and annotation
+    // Create frame with updated data and arrow
         const frame = {
             data: updatedData,
             layout: {
@@ -248,36 +288,37 @@ function createTraversalAnimation(fig, coors, neighbs) {
                     opacity: 0.8
                 }]
             },
-            name: `frame${i}`
+            name: i === coors.length - 1 ? 'final' : `frame${i}`
         };
         
         frames.push(frame);
-    }
-
-    // Final frame processing
-    const lastTreeCoor = coors[coors.length - 1][0];
-    const lastNeighbor = neighbs[neighbs.length - 1];
-    
-    if (lastTreeCoor === lastNeighbor) {
-        traceDict[lastTreeCoor].marker.color = neighboringNodeColor;
-    } else {
-        traceDict[lastTreeCoor].marker.color = strangerNodeColor;
-        frames.push({
-            data: updatedData, 
-            layout: {annotations: []}, 
-            name: 'final'
-        });
     }
     return frames;
 }
 
 function createAlert(message, type) {
-    // Create the alert div
+// Create the bootstrap Alert using a div container
     const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${type}`;
-    alertDiv.role = 'alert';
+//Set its attribute
+    alertDiv.setAttribute('role', 'alert');
+//Properly format the class name for the bootstrap based on the previous python implementation
+    alertDiv.className = `fade alert alert-${type} show`;
+//Text inside the div is the message to return
     alertDiv.innerText = message;
-    return alertDiv;
+
+//NOTE: Please modify this value if going to a different HTML container
+    //Find the container in the html file, which corresponds with the output div 
+    const container = document.getElementById('sphere_neighbors_out')
+    if (container){
+    //If there was an existing bootstrap Alert, get replace it otherwise put the alert in the div container
+        const existingAlert = container.querySelector('.alert');
+        if (existingAlert){
+            container.replaceChild(alertDiv,existingAlert)
+        } else {
+            container.appendChild(alertDiv);
+        }
+
+    } 
 }
 
 const LEVEL_DICT = {
@@ -288,10 +329,12 @@ const LEVEL_DICT = {
 
 class KDTree {
     constructor(tree_structure){
+    //Instead of this being none, it'll just be the tree_structure that was used in python...
         this.root = new KDNode(tree_structure.tree_structure);
     }
 
     find(a,b,c){
+    //Code again similar to python implementaion
         if (this.root){
             var found = this.root.find(a,b,c)
         }
@@ -299,6 +342,7 @@ class KDTree {
     }
     
     findSphereNeighbors(a,b,c,r,neighbors = [], traversalCoordinates = [], inorderNeighbors = [null]){
+    //Code pretty similar to the Python implementation
         let isCenterFound = this.find(a,b,c)
         if (this.root){
             this.root.findSphereNeighbors(a,b,c,r,neighbors,traversalCoordinates,inorderNeighbors)
@@ -323,6 +367,7 @@ class KDNode {
     }
 
     find(x,y,z){
+    //Code very similar to python implementation
         var ret = false
         if (this.x === x && this.y === y && this.z === z){
             ret = true
@@ -349,6 +394,7 @@ class KDNode {
         return ret
     }
     findSphereNeighbors(a,b,c,r,neighbors, traversalCoordinates, inorderNeighbors){
+    // (All the following code is very similar to the python implementation)
     // Calculates the distance of the current node with the center of the sphere
         var distance = Math.sqrt(Math.pow(this.x - a, 2) + Math.pow(this.y - b, 2) + Math.pow(this.z - c,2))
     //  Checks to see if the center of the sphere is the current node
